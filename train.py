@@ -5,6 +5,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.multioutput import MultiOutputClassifier
 from sklearn.metrics import accuracy_score, classification_report
+from sklearn.preprocessing import LabelEncoder
 import joblib  # for saving/loading models
 from symptoms import SymptomMapper
 
@@ -74,14 +75,19 @@ for df, labels in all_data:
 X = pd.concat(feature_frames, ignore_index=True)
 y = pd.concat(label_frames, ignore_index=True)
 
-# --- FILL MISSING VALUES ---
-X = X.fillna(0)  # Replace any NaN in features with 0
-y = y.fillna(0)  # Replace any NaN in labels with 0
-
 print("\nDEBUG: Final combined dataset ready")
 print(f"Feature matrix shape: {X.shape}")
 print(f"Label matrix shape: {y.shape}")
 print(f"All labels being trained on: {y.columns.tolist()}")
+
+# --- ENCODE LABELS ---
+label_encoders = {}
+for col in y.columns:
+    if y[col].dtype == object:
+        le = LabelEncoder()
+        y[col] = le.fit_transform(y[col].astype(str))
+        label_encoders[col] = le
+        print(f"DEBUG: Encoded label '{col}' with classes: {le.classes_}")
 
 # --- SPLIT AND TRAIN MULTI-LABEL MODEL ---
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
