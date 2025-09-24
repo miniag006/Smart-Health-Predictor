@@ -1,6 +1,7 @@
 # train.py
 import os
 import pandas as pd
+import numpy as np
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.multioutput import MultiOutputClassifier
@@ -80,10 +81,17 @@ print(f"Feature matrix shape: {X.shape}")
 print(f"Label matrix shape: {y.shape}")
 print(f"All labels being trained on: {y.columns.tolist()}")
 
-# --- ENCODE LABELS ---
+# --- CLEAN LABELS (REMOVE 'nan' STRINGS AND NaNs) ---
 label_encoders = {}
 for col in y.columns:
     if y[col].dtype == object:
+        # Replace string "nan" with actual NaN
+        y[col] = y[col].replace("nan", np.nan)
+        # Drop rows where label is NaN
+        mask = ~y[col].isna()
+        y = y.loc[mask]
+        X = X.loc[mask]  # Keep features in sync
+        # Encode categorical labels
         le = LabelEncoder()
         y[col] = le.fit_transform(y[col].astype(str))
         label_encoders[col] = le
