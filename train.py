@@ -74,3 +74,10 @@ logging.debug("Model training completed!")
 # Evaluate model
 score = clf.score(X_test, y_test)
 logging.debug(f"Model accuracy: {score:.4f}")
+
+import joblib
+
+# Save the trained model
+joblib.dump(clf, "multi_disease_model.pkl")
+print("Model saved successfully!")
+
