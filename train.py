@@ -1,12 +1,11 @@
 # train.py
 import os
 import pandas as pd
-import numpy as np
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.multioutput import MultiOutputClassifier
-from sklearn.metrics import accuracy_score, classification_report
 from sklearn.preprocessing import LabelEncoder
+from sklearn.metrics import accuracy_score, classification_report
 import joblib  # for saving/loading models
 from symptoms import SymptomMapper
 
@@ -54,6 +53,12 @@ for file_name in os.listdir(DATA_DIR):
             print(f"WARNING: No labels detected in {file_name}, skipping this dataset.")
             continue
 
+        # Drop rows where all label columns are NaN
+        df = df.dropna(subset=labels, how="all")
+        if df.empty:
+            print(f"WARNING: After cleaning, no valid label data in {file_name}, skipping.")
+            continue
+
         print(f"Detected labels in {file_name}: {labels}")
         df['dataset_name'] = file_name
         all_data.append((df, labels))
@@ -76,26 +81,25 @@ for df, labels in all_data:
 X = pd.concat(feature_frames, ignore_index=True)
 y = pd.concat(label_frames, ignore_index=True)
 
+# --- CLEAN LABELS ---
+# Remove columns that are completely empty
+y = y.dropna(axis=1, how="all")
+# Fill remaining NaNs with a placeholder
+y = y.fillna("Unknown")
+
+# Encode categorical labels
+label_encoders = {}
+for col in y.columns:
+    if y[col].dtype == object:
+        le = LabelEncoder()
+        y[col] = le.fit_transform(y[col])
+        label_encoders[col] = le
+        print(f"DEBUG: Encoded label '{col}' with classes: {le.classes_}")
+
 print("\nDEBUG: Final combined dataset ready")
 print(f"Feature matrix shape: {X.shape}")
 print(f"Label matrix shape: {y.shape}")
 print(f"All labels being trained on: {y.columns.tolist()}")
-
-# --- CLEAN LABELS (REMOVE 'nan' STRINGS AND NaNs) ---
-label_encoders = {}
-for col in y.columns:
-    if y[col].dtype == object:
-        # Replace string "nan" with actual NaN
-        y[col] = y[col].replace("nan", np.nan)
-        # Drop rows where label is NaN
-        mask = ~y[col].isna()
-        y = y.loc[mask]
-        X = X.loc[mask]  # Keep features in sync
-        # Encode categorical labels
-        le = LabelEncoder()
-        y[col] = le.fit_transform(y[col].astype(str))
-        label_encoders[col] = le
-        print(f"DEBUG: Encoded label '{col}' with classes: {le.classes_}")
 
 # --- SPLIT AND TRAIN MULTI-LABEL MODEL ---
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
@@ -114,8 +118,10 @@ for i, label in enumerate(y.columns):
 # --- SAVE MODEL AND FEATURES ---
 joblib.dump(clf, MODEL_FILE)
 joblib.dump(X.columns.tolist(), FEATURES_FILE)
+joblib.dump(label_encoders, "label_encoders.pkl")
 print(f"\nDEBUG: Training complete. Model saved as {MODEL_FILE}")
 print(f"DEBUG: Feature columns saved as {FEATURES_FILE}")
+print(f"DEBUG: Label encoders saved as label_encoders.pkl")
 
 # --- FINAL SUMMARY ---
 print("\n=== TRAINING SUMMARY ===")
