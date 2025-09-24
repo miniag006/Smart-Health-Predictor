@@ -16,11 +16,10 @@ patient_symptoms = [
 
 # Convert symptoms to model input vector
 all_symptoms = list(symptom_mapper.symptom_to_weight.keys())
-input_vector = []
-
-for symptom in all_symptoms:
-    # Use weight if symptom reported, else 0
-    input_vector.append(symptom_mapper.get_weight(symptom) if symptom in patient_symptoms else 0)
+input_vector = [
+    symptom_mapper.get_weight(symptom) if symptom in patient_symptoms else 0
+    for symptom in all_symptoms
+]
 
 # Convert to DataFrame with single row
 X_new = pd.DataFrame([input_vector], columns=all_symptoms)
@@ -28,9 +27,20 @@ X_new = pd.DataFrame([input_vector], columns=all_symptoms)
 # Make prediction
 predictions = model.predict(X_new)
 
-# Output
-disease_labels = model.classes_ if hasattr(model, "classes_") else None
+# Map back encoded labels to readable names
+# Each output label has its own encoder saved inside the MultiOutputClassifier
+label_names = ["Class", "Outcome", "disease", "heart_disease", "fast_heart_rate"]
 
-# MultiOutputClassifier returns a 2D array
-for idx, col in enumerate(["Class", "Outcome", "disease", "heart_disease", "fast_heart_rate"]):
-    print(f"{col}: {predictions[0][idx]}")
+for i, col in enumerate(label_names):
+    # Check if the classifier has classes_ attribute for each target
+    if hasattr(model, "estimators_"):
+        try:
+            # MultiOutputClassifier stores each estimator for each label
+            le_classes = model.estimators_[i].classes_
+            pred_value = le_classes[predictions[0][i]]
+            print(f"{col}: {pred_value}")
+        except Exception:
+            # fallback: print raw value
+            print(f"{col}: {predictions[0][i]}")
+    else:
+        print(f"{col}: {predictions[0][i]}")
