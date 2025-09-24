@@ -39,8 +39,8 @@ for file_name in os.listdir(DATA_DIR):
         print(f"Shape: {df.shape}")
         print(f"Columns (first 10): {list(df.columns)[:10]}")
 
-        # Map symptoms to weights using corrected attribute
-        symptom_cols = [col for col in df.columns if col in symptom_mapper.symptom_to_weight]
+        # Map symptoms to weights
+        symptom_cols = [col for col in df.columns if col in symptom_mapper.list_symptoms()]
         if symptom_cols:
             print(f"Mapping symptoms in {file_name}: {symptom_cols[:5]}...")
             for col in symptom_cols:
@@ -73,6 +73,10 @@ for df, labels in all_data:
 
 X = pd.concat(feature_frames, ignore_index=True)
 y = pd.concat(label_frames, ignore_index=True)
+
+# --- FILL MISSING VALUES ---
+X = X.fillna(0)  # Replace any NaN in features with 0
+y = y.fillna(0)  # Replace any NaN in labels with 0
 
 print("\nDEBUG: Final combined dataset ready")
 print(f"Feature matrix shape: {X.shape}")
