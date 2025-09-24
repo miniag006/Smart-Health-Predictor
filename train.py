@@ -3,67 +3,107 @@ import os
 import pandas as pd
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import accuracy_score
-import pickle
+from sklearn.multioutput import MultiOutputClassifier
+from sklearn.metrics import accuracy_score, classification_report
+import joblib  # for saving/loading models
 from symptoms import SymptomMapper
 
 # --- CONFIG ---
-DATA_DIR = './datasets'
-MODEL_PATH = './trained_model.pkl'
+DATA_DIR = "./datasets"
+SYMPTOM_FILE = os.path.join(DATA_DIR, "Symptom-severity.csv")
+MODEL_FILE = "trained_model.pkl"
+FEATURES_FILE = "feature_columns.pkl"
 
-# --- HELPER FUNCTIONS ---
-def load_dataset(file_path):
-    df = pd.read_csv(file_path)
-    return df
+# --- INITIALIZE SYMPTOM MAPPER ---
+print("DEBUG: Initializing SymptomMapper...")
+symptom_mapper = SymptomMapper(SYMPTOM_FILE)
+print(f"DEBUG: Loaded {len(symptom_mapper.list_symptoms())} symptoms from {SYMPTOM_FILE}")
 
-def prepare_data(df, symptom_mapper=None):
-    """Converts symptom names to weights if symptom_mapper is provided."""
-    X = df.drop(columns=[col for col in df.columns if 'prognosis' in col.lower() or 'outcome' in col.lower() or 'class' in col.lower()], errors='ignore')
-    y_col = [col for col in df.columns if 'prognosis' in col.lower() or 'outcome' in col.lower() or 'class' in col.lower()]
-    y = df[y_col[0]] if y_col else None
+# --- HELPER FUNCTION TO DETECT LABELS ---
+def detect_label_columns(df):
+    possible_labels = ["Class", "Outcome", "disease", "heart_disease", "fast_heart_rate"]
+    labels = [col for col in df.columns if col in possible_labels]
+    return labels
 
-    if symptom_mapper:
-        for col in X.columns:
-            if col in symptom_mapper.symptom_weights:
-                X[col] = X[col] * symptom_mapper.symptom_weights[col]
+# --- LOAD AND PROCESS DATASETS ---
+all_data = []
+print(f"\nDEBUG: Scanning datasets folder: {DATA_DIR}")
+for file_name in os.listdir(DATA_DIR):
+    if not file_name.endswith(".csv") or file_name == "Symptom-severity.csv":
+        continue
 
-    return X, y
+    path = os.path.join(DATA_DIR, file_name)
+    try:
+        df = pd.read_csv(path)
+        print(f"\n=== Loaded {file_name} ===")
+        print(f"Shape: {df.shape}")
+        print(f"Columns (first 10): {list(df.columns)[:10]}")
 
-# --- LOAD DATASETS ---
-all_files = [os.path.join(DATA_DIR, f) for f in os.listdir(DATA_DIR) if f.endswith('.csv')]
-dfs = [load_dataset(f) for f in all_files]
+        # Map symptoms to weights using corrected attribute
+        symptom_cols = [col for col in df.columns if col in symptom_mapper.symptom_to_weight]
+        if symptom_cols:
+            print(f"Mapping symptoms in {file_name}: {symptom_cols[:5]}...")
+            for col in symptom_cols:
+                df[col] = df[col].map(symptom_mapper.get_weight).fillna(0)
 
-# Concatenate all datasets (only those with labels)
-labeled_dfs = []
-for df in dfs:
-    label_cols = [col for col in df.columns if 'prognosis' in col.lower() or 'outcome' in col.lower() or 'class' in col.lower()]
-    if label_cols:
-        labeled_dfs.append(df)
+        # Detect labels
+        labels = detect_label_columns(df)
+        if not labels:
+            print(f"WARNING: No labels detected in {file_name}, skipping this dataset.")
+            continue
 
-full_df = pd.concat(labeled_dfs, ignore_index=True)
+        print(f"Detected labels in {file_name}: {labels}")
+        df['dataset_name'] = file_name
+        all_data.append((df, labels))
 
-# --- PREPARE FEATURES AND LABELS ---
-symptom_mapper = SymptomMapper('./datasets/Symptom-severity.csv')
-X, y = prepare_data(full_df, symptom_mapper=symptom_mapper)
+    except Exception as e:
+        print(f"ERROR reading {file_name}: {e}")
 
-# Fill missing values if any
-X = X.fillna(0)
-y = y.fillna(method='ffill')  # or choose another strategy
+if not all_data:
+    raise ValueError("No datasets loaded. Please check your files and paths!")
 
-# --- SPLIT DATA ---
+# --- COMBINE DATA ---
+feature_frames = []
+label_frames = []
+for df, labels in all_data:
+    feature_cols = df.select_dtypes(include='number').columns.tolist()
+    feature_cols = [c for c in feature_cols if c not in labels]
+    feature_frames.append(df[feature_cols])
+    label_frames.append(df[labels])
+
+X = pd.concat(feature_frames, ignore_index=True)
+y = pd.concat(label_frames, ignore_index=True)
+
+print("\nDEBUG: Final combined dataset ready")
+print(f"Feature matrix shape: {X.shape}")
+print(f"Label matrix shape: {y.shape}")
+print(f"All labels being trained on: {y.columns.tolist()}")
+
+# --- SPLIT AND TRAIN MULTI-LABEL MODEL ---
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
-# --- TRAIN MODEL ---
-clf = RandomForestClassifier(n_estimators=100, random_state=42)
+clf = MultiOutputClassifier(RandomForestClassifier(n_estimators=100, random_state=42))
 clf.fit(X_train, y_train)
 
-# --- EVALUATE ---
 y_pred = clf.predict(X_test)
-acc = accuracy_score(y_test, y_pred)
-print(f'Test Accuracy: {acc*100:.2f}%')
 
-# --- SAVE MODEL ---
-with open(MODEL_PATH, 'wb') as f:
-    pickle.dump(clf, f)
+# --- RESULTS ---
+for i, label in enumerate(y.columns):
+    print(f"\n=== Results for {label} ===")
+    print(f"Accuracy: {accuracy_score(y_test.iloc[:, i], y_pred[:, i]):.4f}")
+    print(classification_report(y_test.iloc[:, i], y_pred[:, i]))
 
-print(f'Model saved to {MODEL_PATH}')
+# --- SAVE MODEL AND FEATURES ---
+joblib.dump(clf, MODEL_FILE)
+joblib.dump(X.columns.tolist(), FEATURES_FILE)
+print(f"\nDEBUG: Training complete. Model saved as {MODEL_FILE}")
+print(f"DEBUG: Feature columns saved as {FEATURES_FILE}")
+
+# --- FINAL SUMMARY ---
+print("\n=== TRAINING SUMMARY ===")
+print(f"Datasets used: {len(all_data)}")
+print("Included datasets:", [df['dataset_name'].iloc[0] for df, _ in all_data])
+print(f"Total samples: {len(X)}")
+print(f"Total features: {X.shape[1]}")
+print(f"Trained labels: {y.columns.tolist()}")
+print("========================")
