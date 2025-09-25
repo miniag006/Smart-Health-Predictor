@@ -1,9 +1,9 @@
+import logging
 import pandas as pd
 import numpy as np
-import logging
-from sklearn.impute import SimpleImputer
-from sklearn.preprocessing import LabelEncoder, StandardScaler
 from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+from sklearn.impute import SimpleImputer
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score
 from imblearn.over_sampling import SMOTE
@@ -11,63 +11,55 @@ from imblearn.over_sampling import SMOTE
 logging.basicConfig(level=logging.DEBUG)
 
 # Load dataset
-dataset_path = 'datasets/master_dataset.csv'
-logging.debug(f"Dataset found at: {dataset_path}")
+dataset_path = "datasets/master_dataset.csv"
 df = pd.read_csv(dataset_path)
+logging.debug(f"Dataset found at: {dataset_path}")
 logging.debug(f"Master dataset shape: {df.shape}")
 
-# Separate features and target
-X = df.drop('prognosis', axis=1)
-y = df['prognosis']
+# Features and target
+X = df.drop(columns=['disease'])
+y = df['disease']
 
 # Identify categorical columns
 categorical_cols = X.select_dtypes(include=['object']).columns.tolist()
 
-# Convert categorical columns to string (if not already)
-X[categorical_cols] = X[categorical_cols].astype(str)
-
-# Remove completely empty categorical columns
-non_empty_cols = [col for col in categorical_cols if X[col].notna().any()]
-
-# Impute categorical columns if available
-if non_empty_cols:
+# Impute missing values for categorical columns
+if categorical_cols:
     cat_imputer = SimpleImputer(strategy='most_frequent')
-    X[non_empty_cols] = cat_imputer.fit_transform(X[non_empty_cols])
-else:
-    logging.debug("No categorical columns to impute.")
+    non_empty_cols = [col for col in categorical_cols if not X[col].empty]
+    if non_empty_cols:
+        X[non_empty_cols] = cat_imputer.fit_transform(X[non_empty_cols])
+        logging.debug(f"Categorical columns after imputation: {non_empty_cols}")
 
-# Impute numeric columns
-numeric_cols = X.select_dtypes(include=[np.number]).columns.tolist()
-num_imputer = SimpleImputer(strategy='mean')
-if numeric_cols:
-    X[numeric_cols] = num_imputer.fit_transform(X[numeric_cols])
-
-# Encode categorical columns
-for col in non_empty_cols:
-    le = LabelEncoder()
-    X[col] = le.fit_transform(X[col])
+# Impute missing values for numerical columns
+numerical_cols = X.select_dtypes(include=np.number).columns.tolist()
+if numerical_cols:
+    num_imputer = SimpleImputer(strategy='mean')
+    X[numerical_cols] = num_imputer.fit_transform(X[numerical_cols])
 
 # Scale features
 scaler = StandardScaler()
 X_scaled = scaler.fit_transform(X)
-
-# Encode target labels
-y = LabelEncoder().fit_transform(y.astype(str))
 
 # Split dataset
 X_train, X_test, y_train, y_test = train_test_split(
     X_scaled, y, test_size=0.2, random_state=42, stratify=y
 )
 
-# Apply SMOTE to balance classes
-smote = SMOTE(random_state=42)
-X_train, y_train = smote.fit_resample(X_train, y_train)
+# Handle imbalance with SMOTE if training set has more than 1 class
+unique_classes = np.unique(y_train)
+if len(unique_classes) > 1:
+    smote = SMOTE(random_state=42)
+    X_train, y_train = smote.fit_resample(X_train, y_train)
+    logging.debug(f"After SMOTE, X_train shape: {X_train.shape}, y_train classes: {np.unique(y_train)}")
+else:
+    logging.debug("Skipping SMOTE because training set has only 1 class")
 
-# Train RandomForest classifier
-clf = RandomForestClassifier(n_estimators=100, random_state=42)
+# Train classifier
+clf = RandomForestClassifier(random_state=42)
 clf.fit(X_train, y_train)
 
-# Predict and calculate accuracy
+# Evaluate
 y_pred = clf.predict(X_test)
 accuracy = accuracy_score(y_test, y_pred)
-print(f"Model Accuracy: {accuracy*100:.2f}%")
+print(f"Model accuracy: {accuracy * 100:.2f}%")
