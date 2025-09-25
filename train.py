@@ -4,73 +4,67 @@ import logging
 from sklearn.preprocessing import LabelEncoder, OneHotEncoder
 from sklearn.impute import SimpleImputer
 from sklearn.feature_selection import SelectKBest, f_classif
+from sklearn.model_selection import train_test_split
+from sklearn.ensemble import RandomForestClassifier
 from imblearn.over_sampling import SMOTE
-from xgboost import XGBClassifier
-import joblib
+import pickle
 
 logging.basicConfig(level=logging.DEBUG)
 
-# -------------------- Paths --------------------
-dataset_path = "datasets/master_dataset.csv"  # CSV file path
-model_path = "multidisease_model.pkl"
-label_encoder_path = "label_encoder.pkl"
-
-# -------------------- Load dataset --------------------
-logging.debug(f"Dataset found at: {dataset_path}")
+# Load dataset
+dataset_path = "datasets/master_dataset.csv"
 df = pd.read_csv(dataset_path)
+logging.debug(f"Dataset found at: {dataset_path}")
 logging.debug(f"Master dataset shape: {df.shape}")
 
-# -------------------- Define label --------------------
-label_column = 'disease'  # Use 'disease' as target
-y = df[label_column]
-X = df.drop(label_column, axis=1)
+# Identify label column
+label_col = 'prognosis'  # replace with your actual label column if different
+X = df.drop(label_col, axis=1)
+y = df[label_col]
 
-# -------------------- Encode target --------------------
+# Encode label
 label_encoder = LabelEncoder()
 y_encoded = label_encoder.fit_transform(y)
-joblib.dump(label_encoder, label_encoder_path)
-logging.debug(f"Label encoder classes saved: {list(label_encoder.classes_)}")
+logging.debug(f"Label encoder classes saved: {label_encoder.classes_}")
+with open("label_encoder.pkl", "wb") as f:
+    pickle.dump(label_encoder, f)
 
-# -------------------- Handle missing values --------------------
-# Separate numeric and categorical
-numeric_cols = X.select_dtypes(include=np.number).columns
-categorical_cols = X.select_dtypes(exclude=np.number).columns
+# Separate numeric and categorical columns
+numeric_cols = X.select_dtypes(include=np.number).columns.tolist()
+categorical_cols = X.select_dtypes(include='object').columns.tolist()
 
-# Impute numeric with median
+# Impute missing values
 num_imputer = SimpleImputer(strategy='median')
-X[numeric_cols] = num_imputer.fit_transform(X[numeric_cols])
+X_numeric = pd.DataFrame(num_imputer.fit_transform(X[numeric_cols]), columns=numeric_cols)
 
-# Impute categorical with most frequent
 cat_imputer = SimpleImputer(strategy='most_frequent')
-X[categorical_cols] = cat_imputer.fit_transform(X[categorical_cols])
+X_categorical = pd.DataFrame(cat_imputer.fit_transform(X[categorical_cols]), columns=categorical_cols)
 
-logging.debug("Missing values handled for numeric and categorical columns")
+# One-hot encode categorical features
+ohe = OneHotEncoder(sparse=False, handle_unknown='ignore')
+X_categorical_encoded = pd.DataFrame(ohe.fit_transform(X_categorical), columns=ohe.get_feature_names_out(categorical_cols))
 
-# -------------------- Encode categorical variables --------------------
-X = pd.get_dummies(X, columns=categorical_cols)
-logging.debug(f"Shape after one-hot encoding: {X.shape}")
+# Combine numeric and encoded categorical features
+X_final = pd.concat([X_numeric, X_categorical_encoded], axis=1)
+logging.debug(f"Final feature matrix shape: {X_final.shape}")
 
-# -------------------- Feature selection --------------------
+# Feature selection (optional)
 selector = SelectKBest(score_func=f_classif, k=100)
-X_selected = selector.fit_transform(X, y_encoded)
-logging.debug(f"Selected top 100 features")
+X_selected = selector.fit_transform(X_final, y_encoded)
+logging.debug("Selected top 100 features")
 
-# -------------------- SMOTE oversampling --------------------
+# Apply SMOTE
 smote = SMOTE(k_neighbors=1, random_state=42)
 X_resampled, y_resampled = smote.fit_resample(X_selected, y_encoded)
-logging.debug(f"Resampled dataset shape: {X_resampled.shape}, num_classes={len(np.unique(y_resampled))}")
+logging.debug(f"Resampled dataset shape: {X_resampled.shape}")
 
-# -------------------- Train XGBoost --------------------
-model = XGBClassifier(
-    objective='multi:softmax',
-    num_class=len(np.unique(y_resampled)),
-    eval_metric='mlogloss',
-    use_label_encoder=False,
-    random_state=42
-)
-model.fit(X_resampled, y_resampled)
+# Train model
+X_train, X_test, y_train, y_test = train_test_split(X_resampled, y_resampled, test_size=0.2, random_state=42)
+model = RandomForestClassifier(n_estimators=100, random_state=42)
+model.fit(X_train, y_train)
 logging.debug("Model training completed")
 
-# -------------------- Save model --------------------
-joblib.dump(model, model_path)
-logging.debug(f"Model saved to {model_path}")
+# Save model
+with open("multidisease_model.pkl", "wb") as f:
+    pickle.dump(model, f)
+logging.debug("Model saved as multidisease_model.pkl")
