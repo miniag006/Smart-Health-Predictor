@@ -34,26 +34,29 @@ numeric_cols = X.select_dtypes(include=[np.number]).columns.tolist()
 categorical_cols = X.select_dtypes(exclude=[np.number]).columns.tolist()
 
 # Handle missing values
-num_imputer = SimpleImputer(strategy='median')
-cat_imputer = SimpleImputer(strategy='most_frequent')
-
 if numeric_cols:
+    num_imputer = SimpleImputer(strategy='median')
     X[numeric_cols] = num_imputer.fit_transform(X[numeric_cols])
 if categorical_cols:
+    cat_imputer = SimpleImputer(strategy='most_frequent')
     X[categorical_cols] = cat_imputer.fit_transform(X[categorical_cols])
 logging.debug("Missing values handled for numeric and categorical columns")
 
-# One-hot encode categorical features
+# One-hot encode categorical features (only if any exist)
 if categorical_cols:
     ohe = OneHotEncoder(sparse_output=False, handle_unknown='ignore')
     X_categorical_encoded = pd.DataFrame(ohe.fit_transform(X[categorical_cols]),
-                                         columns=ohe.get_feature_names_out(categorical_cols))
+                                         columns=ohe.get_feature_names_out(categorical_cols),
+                                         index=X.index)
     X = pd.concat([X[numeric_cols], X_categorical_encoded], axis=1)
+else:
+    logging.debug("No categorical columns found, skipping One-Hot Encoding")
 
 # Feature selection: select top 100 features
-selector = SelectKBest(score_func=f_classif, k=100)
+k_features = min(100, X.shape[1])  # avoid error if less than 100 features
+selector = SelectKBest(score_func=f_classif, k=k_features)
 X_selected = selector.fit_transform(X, y_encoded)
-logging.debug(f"Selected top 100 features")
+logging.debug(f"Selected top {k_features} features")
 
 # Handle class imbalance using SMOTE with k_neighbors=1
 smote = SMOTE(k_neighbors=1)
