@@ -6,65 +6,72 @@ from sklearn.impute import SimpleImputer
 from sklearn.feature_selection import SelectKBest, f_classif
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import accuracy_score
 from imblearn.over_sampling import SMOTE
-import pickle
+import joblib
 
 logging.basicConfig(level=logging.DEBUG)
 
 # Load dataset
 dataset_path = "datasets/master_dataset.csv"
-df = pd.read_csv(dataset_path)
 logging.debug(f"Dataset found at: {dataset_path}")
+df = pd.read_csv(dataset_path)
 logging.debug(f"Master dataset shape: {df.shape}")
 
-# Identify label column
-label_col = 'prognosis'  # replace with your actual label column if different
+# Identify features and target
+label_col = 'prognosis'  # replace with actual label column name
 X = df.drop(label_col, axis=1)
 y = df[label_col]
 
-# Encode label
+# Encode target labels
 label_encoder = LabelEncoder()
 y_encoded = label_encoder.fit_transform(y)
+joblib.dump(label_encoder, 'label_encoder.pkl')
 logging.debug(f"Label encoder classes saved: {label_encoder.classes_}")
-with open("label_encoder.pkl", "wb") as f:
-    pickle.dump(label_encoder, f)
 
 # Separate numeric and categorical columns
-numeric_cols = X.select_dtypes(include=np.number).columns.tolist()
-categorical_cols = X.select_dtypes(include='object').columns.tolist()
+numeric_cols = X.select_dtypes(include=[np.number]).columns.tolist()
+categorical_cols = X.select_dtypes(exclude=[np.number]).columns.tolist()
 
-# Impute missing values
+# Handle missing values
 num_imputer = SimpleImputer(strategy='median')
-X_numeric = pd.DataFrame(num_imputer.fit_transform(X[numeric_cols]), columns=numeric_cols)
-
 cat_imputer = SimpleImputer(strategy='most_frequent')
-X_categorical = pd.DataFrame(cat_imputer.fit_transform(X[categorical_cols]), columns=categorical_cols)
+
+if numeric_cols:
+    X[numeric_cols] = num_imputer.fit_transform(X[numeric_cols])
+if categorical_cols:
+    X[categorical_cols] = cat_imputer.fit_transform(X[categorical_cols])
+logging.debug("Missing values handled for numeric and categorical columns")
 
 # One-hot encode categorical features
-ohe = OneHotEncoder(sparse=False, handle_unknown='ignore')
-X_categorical_encoded = pd.DataFrame(ohe.fit_transform(X_categorical), columns=ohe.get_feature_names_out(categorical_cols))
+if categorical_cols:
+    ohe = OneHotEncoder(sparse_output=False, handle_unknown='ignore')
+    X_categorical_encoded = pd.DataFrame(ohe.fit_transform(X[categorical_cols]),
+                                         columns=ohe.get_feature_names_out(categorical_cols))
+    X = pd.concat([X[numeric_cols], X_categorical_encoded], axis=1)
 
-# Combine numeric and encoded categorical features
-X_final = pd.concat([X_numeric, X_categorical_encoded], axis=1)
-logging.debug(f"Final feature matrix shape: {X_final.shape}")
-
-# Feature selection (optional)
+# Feature selection: select top 100 features
 selector = SelectKBest(score_func=f_classif, k=100)
-X_selected = selector.fit_transform(X_final, y_encoded)
-logging.debug("Selected top 100 features")
+X_selected = selector.fit_transform(X, y_encoded)
+logging.debug(f"Selected top 100 features")
 
-# Apply SMOTE
-smote = SMOTE(k_neighbors=1, random_state=42)
+# Handle class imbalance using SMOTE with k_neighbors=1
+smote = SMOTE(k_neighbors=1)
 X_resampled, y_resampled = smote.fit_resample(X_selected, y_encoded)
-logging.debug(f"Resampled dataset shape: {X_resampled.shape}")
+
+# Split into train and test
+X_train, X_test, y_train, y_test = train_test_split(X_resampled, y_resampled,
+                                                    test_size=0.2, random_state=42)
 
 # Train model
-X_train, X_test, y_train, y_test = train_test_split(X_resampled, y_resampled, test_size=0.2, random_state=42)
-model = RandomForestClassifier(n_estimators=100, random_state=42)
+model = RandomForestClassifier(n_estimators=200, random_state=42)
 model.fit(X_train, y_train)
-logging.debug("Model training completed")
+
+# Evaluate
+y_pred = model.predict(X_test)
+accuracy = accuracy_score(y_test, y_pred)
+logging.debug(f"Model Accuracy: {accuracy}")
 
 # Save model
-with open("multidisease_model.pkl", "wb") as f:
-    pickle.dump(model, f)
-logging.debug("Model saved as multidisease_model.pkl")
+joblib.dump(model, 'multidisease_model.pkl')
+logging.debug("Trained model saved as multidisease_model.pkl")
