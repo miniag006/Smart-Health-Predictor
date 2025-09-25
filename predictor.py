@@ -1,65 +1,64 @@
-import pandas as pd
+import pickle
 import numpy as np
-import joblib
+import pandas as pd
+from sklearn.preprocessing import StandardScaler
 
-# --- Load saved artifacts ---
-model = joblib.load("xgb_model.pkl")
-scaler = joblib.load("scaler.pkl")
-selector = joblib.load("selector.pkl")
-le = joblib.load("label_encoder.pkl")
+# Load trained artifacts
+with open("model.pkl", "rb") as f:
+    model = pickle.load(f)
 
-# Load the original dataset once (to know all features and median values)
-dataset_path = r"E:\Projects\Smart Health Predictor\Smart-Health-Predictor\datasets\master_dataset.csv"
-df = pd.read_csv(dataset_path)
-all_features = df.drop(["disease"], axis=1).columns
-feature_medians = df.drop(["disease"], axis=1).median()
+with open("scaler.pkl", "rb") as f:
+    scaler = pickle.load(f)
 
+with open("selector.pkl", "rb") as f:
+    selector = pickle.load(f)
 
-# --- Function to prepare user input ---
-def prepare_input(user_input: dict):
+with open("label_encoder.pkl", "rb") as f:
+    label_encoder = pickle.load(f)
+
+def predict_disease(user_inputs: dict):
     """
-    user_input: dict of {feature_name: value}
-    Example: {"fever": 1, "cough": 1, "age": 35}
+    Predict disease dynamically based on user input.
+
+    user_inputs: dict
+        Format example:
+        {
+            "fever": 1,
+            "cough": 0,
+            "age": 25,
+            "bp": 120,
+            ...
+        }
     """
+    # Convert user inputs to DataFrame (ensures any number of features)
+    input_df = pd.DataFrame([user_inputs])
 
-    # Start with median values for all features
-    input_data = feature_medians.copy()
+    # Fill missing features with 0 (or median if you prefer)
+    for col in selector.feature_names_in_:
+        if col not in input_df.columns:
+            input_df[col] = 0  # default for unchecked checkbox / missing input
 
-    # Update only the features user provided
-    for feature, value in user_input.items():
-        if feature in input_data.index:
-            input_data[feature] = value
+    # Keep only selected features
+    input_selected = input_df[selector.feature_names_in_]
 
-    # Convert to DataFrame with one row
-    input_df = pd.DataFrame([input_data])
+    # Scale the features
+    input_scaled = scaler.transform(input_selected)
 
-    # Apply same scaling + feature selection as training
-    X_scaled = scaler.transform(input_df)
-    X_selected = selector.transform(X_scaled)
+    # Predict using the model
+    pred_class = model.predict(input_scaled)
 
-    return X_selected
+    # Decode label
+    pred_label = label_encoder.inverse_transform(pred_class)
 
+    return pred_label[0]
 
-# --- Function to predict disease ---
-def predict_disease(user_input: dict):
-    X_selected = prepare_input(user_input)
-    prediction = model.predict(X_selected)
-    disease = le.inverse_transform(prediction)[0]
-    return disease
-
-
-# --- Example Usage ---
+# Example usage
 if __name__ == "__main__":
-    # Example: user selects 5 symptoms + 2 numerical inputs
-    user_input = {
+    sample_input = {
         "fever": 1,
-        "cough": 1,
-        "headache": 1,
+        "cough": 0,
         "fatigue": 1,
-        "nausea": 1,
-        "age": 30,
-        "blood_pressure": 120
+        "age": 30
     }
-
-    result = predict_disease(user_input)
-    print("Predicted Disease:", result)
+    prediction = predict_disease(sample_input)
+    print("Predicted disease:", prediction)
