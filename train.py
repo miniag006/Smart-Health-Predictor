@@ -1,70 +1,73 @@
 import pandas as pd
 import numpy as np
 import logging
-from sklearn.preprocessing import LabelEncoder, OneHotEncoder
+from sklearn.preprocessing import LabelEncoder
 from sklearn.impute import SimpleImputer
 from sklearn.feature_selection import SelectKBest, f_classif
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import train_test_split
 from imblearn.over_sampling import SMOTE
-import pickle
+from collections import Counter
 
 logging.basicConfig(level=logging.DEBUG)
 
 # Load dataset
-dataset_path = "datasets/master_dataset.csv"
-df = pd.read_csv(dataset_path)
+dataset_path = 'datasets/master_dataset.csv'
 logging.debug(f"Dataset found at: {dataset_path}")
+df = pd.read_csv(dataset_path)
 logging.debug(f"Master dataset shape: {df.shape}")
 
-# Define label column
+# Separate features and target
 label_col = 'disease'
-X = df.drop(label_col, axis=1)
+X = df.drop(columns=[label_col])
 y = df[label_col]
 
-# Encode target labels
+# Encode target
 le = LabelEncoder()
 y_encoded = le.fit_transform(y)
 logging.debug(f"Label encoder classes saved: {le.classes_}")
-with open('label_encoder.pkl', 'wb') as f:
-    pickle.dump(le, f)
-
-# Identify numeric and categorical columns
-numeric_cols = X.select_dtypes(include=np.number).columns.tolist()
-categorical_cols = X.select_dtypes(exclude=np.number).columns.tolist()
 
 # Handle missing values
-if numeric_cols:
-    num_imputer = SimpleImputer(strategy='median')
-    X[numeric_cols] = num_imputer.fit_transform(X[numeric_cols])
-if categorical_cols:
-    cat_imputer = SimpleImputer(strategy='most_frequent')
-    X[categorical_cols] = cat_imputer.fit_transform(X[categorical_cols])
+numeric_cols = X.select_dtypes(include=np.number).columns
+categorical_cols = X.select_dtypes(include='object').columns
+
+num_imputer = SimpleImputer(strategy='mean')
+cat_imputer = SimpleImputer(strategy='most_frequent')
+
+X[numeric_cols] = num_imputer.fit_transform(X[numeric_cols])
+X[categorical_cols] = cat_imputer.fit_transform(X[categorical_cols])
+
+# Encode categorical features
+for col in categorical_cols:
+    X[col] = LabelEncoder().fit_transform(X[col])
 
 logging.debug("Missing values handled for numeric and categorical columns")
 
-# One-hot encode categorical columns
-if categorical_cols:
-    ohe = OneHotEncoder(handle_unknown='ignore', sparse_output=False)
-    X_encoded = pd.DataFrame(ohe.fit_transform(X[categorical_cols]))
-    X_encoded.index = X.index  # align indices
-    X = X.drop(categorical_cols, axis=1)
-    X = pd.concat([X, X_encoded], axis=1)
-
-# Feature selection: top 100 features
-selector = SelectKBest(score_func=f_classif, k=min(100, X.shape[1]))
+# Feature selection
+selector = SelectKBest(score_func=f_classif, k=100)
 X_selected = selector.fit_transform(X, y_encoded)
 logging.debug("Selected top 100 features")
 
-# Apply SMOTE
+# Filter rare classes (appear less than 2 times)
+counts = Counter(y_encoded)
+rare_classes = [cls for cls, count in counts.items() if count < 2]
+mask = ~np.isin(y_encoded, rare_classes)
+X_filtered = X_selected[mask]
+y_filtered = y_encoded[mask]
+
+# SMOTE for balancing
 smote = SMOTE(k_neighbors=1, random_state=42)
-X_resampled, y_resampled = smote.fit_resample(X_selected, y_encoded)
+X_resampled, y_resampled = smote.fit_resample(X_filtered, y_filtered)
 
-# Train RandomForest model
-clf = RandomForestClassifier(n_estimators=200, random_state=42)
-clf.fit(X_resampled, y_resampled)
+# Train-test split
+X_train, X_test, y_train, y_test = train_test_split(
+    X_resampled, y_resampled, test_size=0.2, random_state=42
+)
 
-# Save the trained model
-with open('multidisease_model.pkl', 'wb') as f:
-    pickle.dump(clf, f)
+# Train classifier
+clf = RandomForestClassifier(n_estimators=100, random_state=42)
+clf.fit(X_train, y_train)
 
-logging.debug("Model training completed and saved successfully")
+# Accuracy
+accuracy = clf.score(X_test, y_test)
+print(f"Model accuracy: {accuracy * 100:.2f}%")
