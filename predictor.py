@@ -1,46 +1,65 @@
 import pandas as pd
+import numpy as np
 import joblib
-from symptoms import SymptomMapper
 
-# Load trained model
-model = joblib.load("multi_disease_model.pkl")
+# --- Load saved artifacts ---
+model = joblib.load("xgb_model.pkl")
+scaler = joblib.load("scaler.pkl")
+selector = joblib.load("selector.pkl")
+le = joblib.load("label_encoder.pkl")
 
-# Initialize symptom mapper
-symptom_mapper = SymptomMapper(csv_path="./datasets/Symptom-severity.csv")
+# Load the original dataset once (to know all features and median values)
+dataset_path = r"E:\Projects\Smart Health Predictor\Smart-Health-Predictor\datasets\master_dataset.csv"
+df = pd.read_csv(dataset_path)
+all_features = df.drop(["disease"], axis=1).columns
+feature_medians = df.drop(["disease"], axis=1).median()
 
-# Example: symptoms reported by a patient
-# Replace this list with actual input
-patient_symptoms = [
-    "headache", "fever", "nausea", "fatigue", "joint_pain"
-]
 
-# Convert symptoms to model input vector
-all_symptoms = list(symptom_mapper.symptom_to_weight.keys())
-input_vector = [
-    symptom_mapper.get_weight(symptom) if symptom in patient_symptoms else 0
-    for symptom in all_symptoms
-]
+# --- Function to prepare user input ---
+def prepare_input(user_input: dict):
+    """
+    user_input: dict of {feature_name: value}
+    Example: {"fever": 1, "cough": 1, "age": 35}
+    """
 
-# Convert to DataFrame with single row
-X_new = pd.DataFrame([input_vector], columns=all_symptoms)
+    # Start with median values for all features
+    input_data = feature_medians.copy()
 
-# Make prediction
-predictions = model.predict(X_new)
+    # Update only the features user provided
+    for feature, value in user_input.items():
+        if feature in input_data.index:
+            input_data[feature] = value
 
-# Map back encoded labels to readable names
-# Each output label has its own encoder saved inside the MultiOutputClassifier
-label_names = ["Class", "Outcome", "disease", "heart_disease", "fast_heart_rate"]
+    # Convert to DataFrame with one row
+    input_df = pd.DataFrame([input_data])
 
-for i, col in enumerate(label_names):
-    # Check if the classifier has classes_ attribute for each target
-    if hasattr(model, "estimators_"):
-        try:
-            # MultiOutputClassifier stores each estimator for each label
-            le_classes = model.estimators_[i].classes_
-            pred_value = le_classes[predictions[0][i]]
-            print(f"{col}: {pred_value}")
-        except Exception:
-            # fallback: print raw value
-            print(f"{col}: {predictions[0][i]}")
-    else:
-        print(f"{col}: {predictions[0][i]}")
+    # Apply same scaling + feature selection as training
+    X_scaled = scaler.transform(input_df)
+    X_selected = selector.transform(X_scaled)
+
+    return X_selected
+
+
+# --- Function to predict disease ---
+def predict_disease(user_input: dict):
+    X_selected = prepare_input(user_input)
+    prediction = model.predict(X_selected)
+    disease = le.inverse_transform(prediction)[0]
+    return disease
+
+
+# --- Example Usage ---
+if __name__ == "__main__":
+    # Example: user selects 5 symptoms + 2 numerical inputs
+    user_input = {
+        "fever": 1,
+        "cough": 1,
+        "headache": 1,
+        "fatigue": 1,
+        "nausea": 1,
+        "age": 30,
+        "blood_pressure": 120
+    }
+
+    result = predict_disease(user_input)
+    print("Predicted Disease:", result)
