@@ -1,0 +1,62 @@
+{
+  "Migraine": {
+    "description": "A neurological condition causing intense, throbbing headaches often with nausea and sensitivity to light/sound.",
+    "tips": [
+      "Rest in a dark, quiet room",
+      "Stay hydrated",
+      "Over-the-counter pain relievers if advised",
+      "Consult a doctor about triptans for frequent attacks"
+    ],
+    "more_info_url": "https://www.mayoclinic.org/diseases-conditions/migraine-headache/symptoms-causes/syc-20360201"
+  },
+  "Allergy": {
+    "description": "Immune response to typically harmless substances (allergens) causing sneezing, itching, or rash.",
+    "tips": [
+      "Avoid known allergens",
+      "Use antihistamines as directed",
+      "Cold compress for itching/rash",
+      "Seek care for breathing difficulty or swelling"
+    ],
+    "more_info_url": "https://www.webmd.com/allergies/default.htm"
+  },
+  "Flu-like Illness": {
+    "description": "Viral illness with fever, cough, sore throat, body aches, and fatigue.",
+    "tips": [
+      "Rest and adequate fluids",
+      "Paracetamol/acetaminophen for fever (if safe for you)",
+      "Isolate while febrile",
+      "Seek care if breathing difficulty or chest pain"
+    ],
+    "more_info_url": "https://www.cdc.gov/flu/symptoms/index.html"
+  },
+  "Diabetes": {
+    "description": "A chronic condition affecting how your body turns food into energy, leading to high blood sugar.",
+    "tips": [
+      "Monitor blood glucose as advised",
+      "Balanced diet and regular exercise",
+      "Adhere to medications/insulin schedule",
+      "Routine checkups"
+    ],
+    "more_info_url": "https://www.mayoclinic.org/diseases-conditions/diabetes/symptoms-causes/syc-20371444"
+  },
+  "Hypertension": {
+    "description": "Elevated blood pressure that can increase risk of heart disease and stroke if uncontrolled.",
+    "tips": [
+      "Reduce salt intake",
+      "Regular physical activity",
+      "Take prescribed antihypertensives",
+      "Monitor BP at home"
+    ],
+    "more_info_url": "https://www.heart.org/en/health-topics/high-blood-pressure"
+  },
+  "COVID-19": {
+    "description": "Respiratory viral infection that can cause fever, cough, loss of taste/smell, and breathing issues.",
+    "tips": [
+      "Isolate and wear a mask",
+      "Hydrate and rest",
+      "Follow local testing and treatment guidance",
+      "Seek urgent care for breathing difficulty"
+    ],
+    "more_info_url": "https://www.cdc.gov/coronavirus/2019-ncov/your-health/about-covid-19.html"
+  }
+}
