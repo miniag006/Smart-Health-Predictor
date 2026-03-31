@@ -1,0 +1,70 @@
+{% extends 'base.html' %}
+{% block content %}
+<section class="dashboard">
+  <aside class="sidebar glass">
+    <a class="profile" href="{{ url_for('profile') }}" style="text-decoration:none;color:inherit">
+      <div class="avatar">{{ (full_name or 'U')[0] }}</div>
+      <div>
+        <h3>{{ full_name }}</h3>
+        <p class="muted">Welcome to HealthAI</p>
+      </div>
+    </a>
+    <div class="side-title">Dashboard</div>
+    <nav class="side-links">
+      <a href="{{ url_for('home') }}" class="active" data-link="dashboard"><i data-lucide="layout-dashboard"></i> Dashboard</a>
+      <a href="{{ url_for('dashboard') }}#predict" data-link="predict"><i data-lucide="activity"></i> Predict Disease</a>
+      <a href="{{ url_for('history') }}"><i data-lucide="history"></i> Health History</a>
+      <a href="{{ url_for('logout') }}"><i data-lucide="log-out"></i> Logout</a>
+    </nav>
+  </aside>
+
+  <div class="content">
+    <div class="cards">
+      <div class="card gradient">
+        <h3><i data-lucide="sparkles"></i> Hello, {{ full_name.split(' ')[0] if full_name else 'User' }} 👋</h3>
+        <p>Use the Predict Disease tool to get insights based on your symptoms.</p>
+      </div>
+    </div>
+
+    <section id="predict" class="predict-section glass">
+      <h3>Disease Prediction</h3>
+      <p class="muted">Select your symptoms and click Predict</p>
+      <div class="field"><input id="symptomSearch" placeholder="Search symptoms..."/></div>
+      <div id="symptom-container" class="symptom-grid"></div>
+      <div class="actions">
+        <button class="btn" id="clearBtn">Clear</button>
+        <button class="btn primary" id="predictBtn">Predict</button>
+      </div>
+      <div id="result" class="result hidden"></div>
+    </section>
+  </div>
+</section>
+<script>
+  window.SYMPTOMS_ENDPOINT = "{{ url_for('predict') }}";
+</script>
+<script src="{{ url_for('static', filename='js/predict.js') }}"></script>
+<!-- Modal for result -->
+<div id="resultModal" class="modal hidden">
+  <div class="modal-backdrop"></div>
+  <div class="modal-card glass">
+    <button class="modal-close" id="modalClose" aria-label="Close">×</button>
+    <div id="modalContent"></div>
+  </div>
+</div>
+<script>
+  (function(){
+    function setActiveByHash(){
+      const hash = window.location.hash || '';
+      const dash = document.querySelector('.side-links a[data-link="dashboard"]');
+      const pred = document.querySelector('.side-links a[data-link="predict"]');
+      if(!dash || !pred) return;
+      dash.classList.remove('active');
+      pred.classList.remove('active');
+      if(hash === '#predict') { pred.classList.add('active'); }
+      else { dash.classList.add('active'); }
+    }
+    window.addEventListener('hashchange', setActiveByHash);
+    document.addEventListener('DOMContentLoaded', setActiveByHash);
+  })();
+</script>
+{% endblock %}
